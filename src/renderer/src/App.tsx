@@ -61,15 +61,26 @@ export default function App() {
     try {
       // دریافت سرورها از cloud
       const cloudServers = await window.api.sync.download()
+      const cloudIds = new Set(cloudServers.map((s) => s.id))
+
       // خواندن سرورهای محلی فعلی (fresh از store)
       const localServers = await window.api.server.list()
-      // افزودن سرورهای cloud که محلی نداریم
+      const localIds = new Set(localServers.map((s) => s.id))
+
+      // افزودن سرورهایی که در cloud هستن ولی محلی نیستن
       for (const cs of cloudServers) {
-        const exists = localServers.find((s) => s.id === cs.id)
-        if (!exists) await window.api.server.add(cs)
+        if (!localIds.has(cs.id)) {
+          await window.api.server.add(cs) // ID حفظ می‌شه
+        }
       }
-      // آپلود سرورهای محلی به cloud
-      await window.api.sync.uploadAll()
+
+      // آپلود فقط سرورهایی که محلی هستن ولی در cloud نیستن
+      for (const ls of localServers) {
+        if (!cloudIds.has(ls.id)) {
+          await window.api.sync.uploadServer(ls.id).catch(() => {})
+        }
+      }
+
       await loadServers()
       setSyncMsg('Synced ✓')
       setTimeout(() => setSyncMsg(null), 2500)

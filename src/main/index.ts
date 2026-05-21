@@ -6,6 +6,7 @@ import {
   updateServer,
   deleteServer,
   getServerWithPassword,
+  getDecryptedPassword,
   clearServers,
   Server
 } from './store'
@@ -166,7 +167,11 @@ app.whenReady().then(() => {
   ipcMain.handle('sync:upload-all', async () => {
     const user = loadUser()
     if (!user) throw new Error('Not signed in')
-    const servers = getServers()
+    // رمز هر سرور رو decrypt می‌کنیم — cloud-sync خودش re-encrypt می‌کنه
+    const servers = getServers().map((s) => ({
+      ...s,
+      password: getDecryptedPassword(s)
+    }))
     await syncAll(apiKey, projectId, user.uid, servers)
   })
 

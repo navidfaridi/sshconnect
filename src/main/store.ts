@@ -69,12 +69,12 @@ export function getServers(): Server[] {
   return store.get('servers')
 }
 
-export function addServer(server: Omit<Server, 'id' | 'createdAt'>): Server {
+export function addServer(server: Omit<Server, 'id' | 'createdAt'> & { id?: string; createdAt?: number }): Server {
   const servers = store.get('servers')
   const newServer: Server = {
     ...server,
-    id: Date.now().toString(),
-    createdAt: Date.now(),
+    id: server.id ?? Date.now().toString(),
+    createdAt: server.createdAt ?? Date.now(),
     password: server.password ? encrypt(server.password) : undefined
   }
   store.set('servers', [...servers, newServer])

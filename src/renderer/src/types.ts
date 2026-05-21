@@ -52,7 +52,7 @@ declare global {
       }
       server: {
         list: () => Promise<Server[]>
-        add: (server: Omit<Server, 'id' | 'createdAt'>) => Promise<Server>
+        add: (server: Omit<Server, 'id' | 'createdAt'> & { id?: string; createdAt?: number }) => Promise<Server>
         update: (id: string, updates: Partial<Server>) => Promise<Server | null>
         delete: (id: string) => Promise<boolean>
         clearAll: () => Promise<void>
