@@ -6,6 +6,7 @@ import ServerModal from './components/ServerModal'
 import SplitPane from './components/SplitPane'
 import AuthButton from './components/AuthButton'
 import { Server, Tab, CloudUser } from './types'
+import logoUrl from './assets/logo.png'
 
 export default function App() {
   const [servers, setServers] = useState<Server[]>([])
@@ -162,9 +163,15 @@ export default function App() {
 
       {/* ── Draggable title bar ── */}
       <div
-        className="flex items-center px-4 bg-dark-800 border-b border-dark-600 flex-shrink-0"
+        className="flex items-center gap-2 px-3 bg-dark-800 border-b border-dark-600 flex-shrink-0"
         style={{ height: 36, WebkitAppRegion: 'drag' } as React.CSSProperties}
       >
+        <img
+          src={logoUrl}
+          alt="ConnectSSH"
+          className="w-4 h-4 pointer-events-none select-none flex-shrink-0"
+          style={{ imageRendering: 'crisp-edges' }}
+        />
         <span className="text-xs font-semibold text-gray-500 pointer-events-none select-none tracking-wide">
           ConnectSSH
         </span>
