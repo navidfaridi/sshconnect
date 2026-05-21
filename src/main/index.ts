@@ -19,6 +19,11 @@ import {
   deleteRemoteFile,
   createRemoteDirectory
 } from './ssh-manager'
+import { signInWithGoogle, loadUser, clearUser, getValidToken } from './auth'
+import { fetchServers, uploadServer, deleteServer as cloudDelete, syncAll } from './cloud-sync'
+import { FIREBASE_CONFIG } from './firebase-config'
+
+const { apiKey, projectId } = FIREBASE_CONFIG
 
 function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
@@ -132,6 +137,47 @@ app.whenReady().then(() => {
   ipcMain.handle('sftp:mkdir', (_, connectionId: string, remotePath: string) =>
     createRemoteDirectory(connectionId, remotePath)
   )
+
+  // ─── Auth IPC ───────────────────────────────────────────────────
+  ipcMain.handle('auth:current-user', () => {
+    const u = loadUser()
+    return u ? { uid: u.uid, email: u.email, displayName: u.displayName, photoUrl: u.photoUrl } : null
+  })
+
+  ipcMain.handle('auth:sign-in', async () => {
+    const user = await signInWithGoogle(apiKey)
+    return { uid: user.uid, email: user.email, displayName: user.displayName, photoUrl: user.photoUrl }
+  })
+
+  ipcMain.handle('auth:sign-out', () => clearUser())
+
+  // ─── Cloud Sync IPC ─────────────────────────────────────────────
+  ipcMain.handle('sync:download', async () => {
+    const user = loadUser()
+    if (!user) throw new Error('Not signed in')
+    const cloudServers = await fetchServers(apiKey, projectId, user.uid)
+    return cloudServers
+  })
+
+  ipcMain.handle('sync:upload-all', async () => {
+    const user = loadUser()
+    if (!user) throw new Error('Not signed in')
+    const servers = getServers()
+    await syncAll(apiKey, projectId, user.uid, servers)
+  })
+
+  ipcMain.handle('sync:upload-server', async (_, serverId: string) => {
+    const user = loadUser()
+    if (!user) return
+    const server = getServerWithPassword(serverId)
+    if (server) await uploadServer(apiKey, projectId, user.uid, server)
+  })
+
+  ipcMain.handle('sync:delete-server', async (_, serverId: string) => {
+    const user = loadUser()
+    if (!user) return
+    await cloudDelete(apiKey, projectId, user.uid, serverId)
+  })
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

@@ -1,6 +1,21 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
 contextBridge.exposeInMainWorld('api', {
+  // ─── Auth ─────────────────────────────────────────────────────
+  auth: {
+    currentUser: () => ipcRenderer.invoke('auth:current-user'),
+    signIn: () => ipcRenderer.invoke('auth:sign-in'),
+    signOut: () => ipcRenderer.invoke('auth:sign-out')
+  },
+
+  // ─── Sync ─────────────────────────────────────────────────────
+  sync: {
+    download: () => ipcRenderer.invoke('sync:download'),
+    uploadAll: () => ipcRenderer.invoke('sync:upload-all'),
+    uploadServer: (id: string) => ipcRenderer.invoke('sync:upload-server', id),
+    deleteServer: (id: string) => ipcRenderer.invoke('sync:delete-server', id)
+  },
+
   // ─── Servers ─────────────────────────────────────────────────
   server: {
     list: () => ipcRenderer.invoke('server:list'),

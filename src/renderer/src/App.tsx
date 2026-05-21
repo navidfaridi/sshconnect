@@ -4,7 +4,8 @@ import Terminal from './components/Terminal'
 import FileManager from './components/FileManager'
 import ServerModal from './components/ServerModal'
 import SplitPane from './components/SplitPane'
-import { Server, Tab } from './types'
+import AuthButton from './components/AuthButton'
+import { Server, Tab, CloudUser } from './types'
 
 export default function App() {
   const [servers, setServers] = useState<Server[]>([])
@@ -12,11 +13,61 @@ export default function App() {
   const [activeTabId, setActiveTabId] = useState<string | null>(null)
   const [showModal, setShowModal] = useState(false)
   const [editServer, setEditServer] = useState<Server | null>(null)
+  const [user, setUser] = useState<CloudUser | null>(null)
+  const [syncing, setSyncing] = useState(false)
+  const [syncMsg, setSyncMsg] = useState<string | null>(null)
 
-  useEffect(() => { loadServers() }, [])
+  useEffect(() => {
+    loadServers()
+    // بررسی وضعیت لاگین هنگام شروع
+    window.api.auth.currentUser().then((u) => setUser(u))
+  }, [])
 
   async function loadServers() {
     setServers(await window.api.server.list())
+  }
+
+  // ─── Auth ────────────────────────────────────────────────────────
+  async function handleSignIn() {
+    try {
+      const u = await window.api.auth.signIn()
+      setUser(u)
+      // بعد از لاگین، سرورهای cloud را دریافت و merge کن
+      await handleSync(u)
+    } catch (e: any) {
+      alert('Sign in failed: ' + e.message)
+    }
+  }
+
+  async function handleSignOut() {
+    await window.api.auth.signOut()
+    setUser(null)
+  }
+
+  async function handleSync(currentUser?: CloudUser) {
+    const u = currentUser ?? user
+    if (!u) return
+    setSyncing(true)
+    setSyncMsg(null)
+    try {
+      // دریافت سرورها از cloud
+      const cloudServers = await window.api.sync.download()
+      // افزودن سرورهای cloud که محلی نداریم
+      for (const cs of cloudServers) {
+        const exists = servers.find((s) => s.id === cs.id)
+        if (!exists) await window.api.server.add(cs)
+      }
+      // آپلود سرورهای محلی به cloud
+      await window.api.sync.uploadAll()
+      await loadServers()
+      setSyncMsg('Synced ✓')
+      setTimeout(() => setSyncMsg(null), 2500)
+    } catch (e: any) {
+      setSyncMsg('Sync failed')
+      setTimeout(() => setSyncMsg(null), 3000)
+    } finally {
+      setSyncing(false)
+    }
   }
 
   async function handleConnect(server: Server) {
@@ -69,8 +120,13 @@ export default function App() {
   }
 
   async function handleSaveServer(data: Omit<Server, 'id' | 'createdAt'>) {
-    if (editServer) await window.api.server.update(editServer.id, data)
-    else            await window.api.server.add(data)
+    if (editServer) {
+      await window.api.server.update(editServer.id, data)
+      if (user) window.api.sync.uploadServer(editServer.id).catch(() => {})
+    } else {
+      const added = await window.api.server.add(data)
+      if (user && added?.id) window.api.sync.uploadServer(added.id).catch(() => {})
+    }
     setShowModal(false)
     setEditServer(null)
     loadServers()
@@ -78,6 +134,7 @@ export default function App() {
 
   async function handleDeleteServer(id: string) {
     await window.api.server.delete(id)
+    if (user) window.api.sync.deleteServer(id).catch(() => {})
     loadServers()
   }
 
@@ -106,13 +163,28 @@ export default function App() {
       <div className="flex flex-1 overflow-hidden">
 
         {/* ── Sidebar ── */}
-        <Sidebar
-          servers={servers}
-          onConnect={handleConnect}
-          onAdd={() => { setEditServer(null); setShowModal(true) }}
-          onEdit={(s) => { setEditServer(s); setShowModal(true) }}
-          onDelete={handleDeleteServer}
-        />
+        <div className="w-64 bg-dark-800 border-r border-dark-600 flex flex-col">
+          <Sidebar
+            servers={servers}
+            onConnect={handleConnect}
+            onAdd={() => { setEditServer(null); setShowModal(true) }}
+            onEdit={(s) => { setEditServer(s); setShowModal(true) }}
+            onDelete={handleDeleteServer}
+          />
+          {/* sync status */}
+          {syncMsg && (
+            <div className="px-4 py-1 text-xs text-center text-green-400 bg-green-900/20">
+              {syncMsg}
+            </div>
+          )}
+          <AuthButton
+            user={user}
+            syncing={syncing}
+            onSignIn={handleSignIn}
+            onSignOut={handleSignOut}
+            onSync={() => handleSync()}
+          />
+        </div>
 
         {/* ── Main area ── */}
         <div className="flex-1 flex flex-col overflow-hidden">

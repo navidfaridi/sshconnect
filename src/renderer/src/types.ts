@@ -1,3 +1,10 @@
+export interface CloudUser {
+  uid: string
+  email: string
+  displayName: string
+  photoUrl: string
+}
+
 export interface Server {
   id: string
   name: string
@@ -32,6 +39,17 @@ export interface FileEntry {
 declare global {
   interface Window {
     api: {
+      auth: {
+        currentUser: () => Promise<CloudUser | null>
+        signIn: () => Promise<CloudUser>
+        signOut: () => Promise<void>
+      }
+      sync: {
+        download: () => Promise<Server[]>
+        uploadAll: () => Promise<void>
+        uploadServer: (id: string) => Promise<void>
+        deleteServer: (id: string) => Promise<void>
+      }
       server: {
         list: () => Promise<Server[]>
         add: (server: Omit<Server, 'id' | 'createdAt'>) => Promise<Server>

@@ -26,7 +26,7 @@ export default function Sidebar({ servers, onConnect, onAdd, onEdit, onDelete }:
 
   return (
     <div
-      className="w-64 bg-dark-800 border-r border-dark-600 flex flex-col select-none"
+      className="flex-1 flex flex-col select-none overflow-hidden"
       onClick={() => setContextMenu(null)}
     >
       {/* Header */}
