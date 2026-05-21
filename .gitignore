@@ -3,3 +3,8 @@ dist/
 out/
 .claude/
 *.log
+
+# Secrets — never commit
+.env
+.env.local
+.env.production

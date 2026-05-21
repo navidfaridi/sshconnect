@@ -1,0 +1,51 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+
+  <defs>
+    <!-- گلوی آبی برای C و cursor -->
+    <filter id="glow" x="-25%" y="-25%" width="150%" height="150%">
+      <feGaussianBlur stdDeviation="7" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <!-- گلوی خفیف پس‌زمینه -->
+    <radialGradient id="bgGlow" cx="44%" cy="40%" r="52%">
+      <stop offset="0%"   stop-color="#388bfd" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="#388bfd" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- پس‌زمینه: مربع گرد تیره -->
+  <rect width="512" height="512" rx="110" fill="#0d1117"/>
+  <!-- لایه گلوی خفیف روی پس‌زمینه -->
+  <rect width="512" height="512" rx="110" fill="url(#bgGlow)"/>
+
+  <!--
+    کمان C
+    مرکز: (256, 256) | شعاع: 162 | gap: ±32° از سمت راست
+    top  = (256 + 162×cos32°, 256 − 162×sin32°) ≈ (393, 171)
+    bot  = (256 + 162×cos32°, 256 + 162×sin32°) ≈ (393, 341)
+    sweep=0 → ضد ساعتگرد در فضای صفحه → کمان C بزرگ سمت چپ
+  -->
+  <path
+    d="M 393,171 A 162,162 0 1,0 393,341"
+    stroke="#388bfd"
+    stroke-width="58"
+    stroke-linecap="round"
+    filter="url(#glow)"
+  />
+
+  <!--
+    cursor ترمینال: یه خط ضخیم (underscore) داخل C
+    کمی راست از مرکز، روی خط پایه حروف
+  -->
+  <rect
+    x="290" y="284"
+    width="86" height="20"
+    rx="10"
+    fill="#58a6ff"
+    filter="url(#glow)"
+  />
+
+</svg>
