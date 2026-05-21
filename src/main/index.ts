@@ -6,6 +6,7 @@ import {
   updateServer,
   deleteServer,
   getServerWithPassword,
+  clearServers,
   Server
 } from './store'
 import {
@@ -70,6 +71,8 @@ app.whenReady().then(() => {
   })
 
   ipcMain.handle('server:delete', (_, id: string) => deleteServer(id))
+
+  ipcMain.handle('server:clear-all', () => clearServers())
 
   // ─── SSH IPC ────────────────────────────────────────────────────
   ipcMain.handle('ssh:connect', async (_, connectionId: string, serverId: string) => {

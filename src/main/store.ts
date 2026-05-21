@@ -119,3 +119,7 @@ export function getServerWithPassword(id: string): Server | null {
   if (!server) return null
   return { ...server, password: getDecryptedPassword(server) }
 }
+
+export function clearServers(): void {
+  store.set('servers', [])
+}

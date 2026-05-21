@@ -55,6 +55,7 @@ declare global {
         add: (server: Omit<Server, 'id' | 'createdAt'>) => Promise<Server>
         update: (id: string, updates: Partial<Server>) => Promise<Server | null>
         delete: (id: string) => Promise<boolean>
+        clearAll: () => Promise<void>
       }
       ssh: {
         connect: (connectionId: string, serverId: string) => Promise<void>

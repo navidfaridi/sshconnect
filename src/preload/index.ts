@@ -21,7 +21,8 @@ contextBridge.exposeInMainWorld('api', {
     list: () => ipcRenderer.invoke('server:list'),
     add: (server: object) => ipcRenderer.invoke('server:add', server),
     update: (id: string, updates: object) => ipcRenderer.invoke('server:update', id, updates),
-    delete: (id: string) => ipcRenderer.invoke('server:delete', id)
+    delete: (id: string) => ipcRenderer.invoke('server:delete', id),
+    clearAll: () => ipcRenderer.invoke('server:clear-all')
   },
 
   // ─── SSH ──────────────────────────────────────────────────────

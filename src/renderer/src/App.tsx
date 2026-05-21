@@ -40,6 +40,14 @@ export default function App() {
   }
 
   async function handleSignOut() {
+    // بستن همه تب‌های باز
+    tabs.forEach((tab) => window.api.ssh.disconnect(tab.id))
+    setTabs([])
+    setActiveTabId(null)
+    // پاک کردن سرورها از local store و state
+    await window.api.server.clearAll()
+    setServers([])
+    // logout
     await window.api.auth.signOut()
     setUser(null)
   }
@@ -52,9 +60,11 @@ export default function App() {
     try {
       // دریافت سرورها از cloud
       const cloudServers = await window.api.sync.download()
+      // خواندن سرورهای محلی فعلی (fresh از store)
+      const localServers = await window.api.server.list()
       // افزودن سرورهای cloud که محلی نداریم
       for (const cs of cloudServers) {
-        const exists = servers.find((s) => s.id === cs.id)
+        const exists = localServers.find((s) => s.id === cs.id)
         if (!exists) await window.api.server.add(cs)
       }
       // آپلود سرورهای محلی به cloud
