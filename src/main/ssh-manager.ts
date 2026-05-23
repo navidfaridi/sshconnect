@@ -12,6 +12,11 @@ export interface SshConnection {
 
 const connections = new Map<string, SshConnection>()
 
+// ─── Expose raw client for monitoring ─────────────────────────────────────────
+export function getClient(connectionId: string): Client | null {
+  return connections.get(connectionId)?.client ?? null
+}
+
 export function connect(
   connectionId: string,
   config: ConnectConfig,
@@ -24,51 +29,30 @@ export function connect(
     const cleanup = () => {
       if (connections.has(connectionId)) {
         connections.delete(connectionId)
-        if (!win.isDestroyed()) {
-          win.webContents.send('ssh:closed', connectionId)
-        }
+        if (!win.isDestroyed()) win.webContents.send('ssh:closed', connectionId)
       }
     }
 
     client.on('ready', () => {
       isReady = true
       client.shell({ term: 'xterm-256color', cols: 220, rows: 50 }, (err, stream) => {
-        if (err) {
-          reject(err)
-          return
-        }
-
+        if (err) { reject(err); return }
         connections.set(connectionId, { id: connectionId, client, stream })
 
         stream.on('data', (data: Buffer) => {
-          if (!win.isDestroyed()) {
-            win.webContents.send('ssh:data', connectionId, data.toString())
-          }
+          if (!win.isDestroyed()) win.webContents.send('ssh:data', connectionId, data.toString())
         })
-
         stream.stderr.on('data', (data: Buffer) => {
-          if (!win.isDestroyed()) {
-            win.webContents.send('ssh:data', connectionId, data.toString())
-          }
+          if (!win.isDestroyed()) win.webContents.send('ssh:data', connectionId, data.toString())
         })
-
-        stream.on('close', () => {
-          cleanup()
-        })
-
+        stream.on('close', cleanup)
         resolve()
       })
     })
 
     client.on('close', cleanup)
-    client.on('end', cleanup)
-    client.on('error', (err) => {
-      cleanup()
-      if (!isReady) {
-        reject(err)
-      }
-    })
-
+    client.on('end',   cleanup)
+    client.on('error', (err) => { cleanup(); if (!isReady) reject(err) })
     client.connect(config)
   })
 }
@@ -81,24 +65,21 @@ export function sendData(connectionId: string, data: string): boolean {
 }
 
 export function resizeTerminal(connectionId: string, cols: number, rows: number): void {
-  const conn = connections.get(connectionId)
-  conn?.stream?.setWindow(rows, cols, 0, 0)
+  connections.get(connectionId)?.stream?.setWindow(rows, cols, 0, 0)
 }
 
 export function disconnect(connectionId: string): void {
   const conn = connections.get(connectionId)
-  if (conn) {
-    conn.client.end()
-    connections.delete(connectionId)
-  }
+  if (conn) { conn.client.end(); connections.delete(connectionId) }
 }
+
+// ─── SFTP helpers ─────────────────────────────────────────────────────────────
 
 export function getSftp(connectionId: string): Promise<SFTPWrapper> {
   return new Promise((resolve, reject) => {
     const conn = connections.get(connectionId)
     if (!conn) return reject(new Error('Connection not found'))
     if (conn.sftp) return resolve(conn.sftp)
-
     conn.client.sftp((err, sftp) => {
       if (err) return reject(err)
       conn.sftp = sftp
@@ -108,12 +89,9 @@ export function getSftp(connectionId: string): Promise<SFTPWrapper> {
 }
 
 export interface FileEntry {
-  filename: string
-  longname: string
-  isDirectory: boolean
-  size: number
-  modifyTime: number
-  permissions: number
+  filename: string; longname: string
+  isDirectory: boolean; size: number
+  modifyTime: number; permissions: number
 }
 
 export async function listDirectory(connectionId: string, remotePath: string): Promise<FileEntry[]> {
@@ -121,41 +99,32 @@ export async function listDirectory(connectionId: string, remotePath: string): P
   return new Promise((resolve, reject) => {
     sftp.readdir(remotePath, (err, list) => {
       if (err) return reject(err)
-      const entries: FileEntry[] = list.map((item) => ({
+      resolve(list.map((item) => ({
         filename: item.filename,
         longname: item.longname,
         isDirectory: (item.attrs.mode! & 0o170000) === 0o040000,
         size: item.attrs.size ?? 0,
         modifyTime: (item.attrs.mtime ?? 0) * 1000,
         permissions: item.attrs.mode ?? 0
-      }))
-      resolve(entries)
+      })))
     })
   })
 }
 
 export async function uploadFile(
-  connectionId: string,
-  localPath: string,
-  remotePath: string,
-  win: BrowserWindow
+  connectionId: string, localPath: string, remotePath: string, win: BrowserWindow
 ): Promise<void> {
   const sftp = await getSftp(connectionId)
   const fileSize = fs.statSync(localPath).size
   let transferred = 0
-
   return new Promise((resolve, reject) => {
-    const readStream = fs.createReadStream(localPath)
+    const readStream  = fs.createReadStream(localPath)
     const writeStream = sftp.createWriteStream(remotePath)
-
     readStream.on('data', (chunk: Buffer) => {
       transferred += chunk.length
-      const progress = Math.round((transferred / fileSize) * 100)
-      if (!win.isDestroyed()) {
-        win.webContents.send('sftp:progress', connectionId, localPath, progress)
-      }
+      if (!win.isDestroyed())
+        win.webContents.send('sftp:progress', connectionId, localPath, Math.round((transferred / fileSize) * 100))
     })
-
     writeStream.on('close', resolve)
     writeStream.on('error', reject)
     readStream.pipe(writeStream)
@@ -163,32 +132,22 @@ export async function uploadFile(
 }
 
 export async function downloadFile(
-  connectionId: string,
-  remotePath: string,
-  localPath: string,
-  win: BrowserWindow
+  connectionId: string, remotePath: string, localPath: string, win: BrowserWindow
 ): Promise<void> {
   const sftp = await getSftp(connectionId)
-
   return new Promise((resolve, reject) => {
     sftp.stat(remotePath, (err, stats) => {
       if (err) return reject(err)
       const fileSize = stats.size
       let transferred = 0
-      const filename = path.basename(remotePath)
-      const destPath = path.join(localPath, filename)
-
-      const readStream = sftp.createReadStream(remotePath)
+      const destPath  = path.join(localPath, path.basename(remotePath))
+      const readStream  = sftp.createReadStream(remotePath)
       const writeStream = fs.createWriteStream(destPath)
-
       readStream.on('data', (chunk: Buffer) => {
         transferred += chunk.length
-        const progress = Math.round((transferred / fileSize) * 100)
-        if (!win.isDestroyed()) {
-          win.webContents.send('sftp:progress', connectionId, remotePath, progress)
-        }
+        if (!win.isDestroyed())
+          win.webContents.send('sftp:progress', connectionId, remotePath, Math.round((transferred / fileSize) * 100))
       })
-
       writeStream.on('close', resolve)
       writeStream.on('error', reject)
       readStream.pipe(writeStream)
@@ -199,17 +158,35 @@ export async function downloadFile(
 export async function deleteRemoteFile(connectionId: string, remotePath: string, isDirectory: boolean): Promise<void> {
   const sftp = await getSftp(connectionId)
   return new Promise((resolve, reject) => {
-    if (isDirectory) {
-      sftp.rmdir(remotePath, (err) => (err ? reject(err) : resolve()))
-    } else {
-      sftp.unlink(remotePath, (err) => (err ? reject(err) : resolve()))
-    }
+    if (isDirectory) sftp.rmdir(remotePath, (e) => e ? reject(e) : resolve())
+    else             sftp.unlink(remotePath, (e) => e ? reject(e) : resolve())
   })
 }
 
 export async function createRemoteDirectory(connectionId: string, remotePath: string): Promise<void> {
   const sftp = await getSftp(connectionId)
+  return new Promise((resolve, reject) => sftp.mkdir(remotePath, (e) => e ? reject(e) : resolve()))
+}
+
+// ─── Feature 4: Read / Write remote file via SFTP ─────────────────────────────
+
+export async function readRemoteFile(connectionId: string, remotePath: string): Promise<string> {
+  const sftp = await getSftp(connectionId)
   return new Promise((resolve, reject) => {
-    sftp.mkdir(remotePath, (err) => (err ? reject(err) : resolve()))
+    const chunks: Buffer[] = []
+    const stream = sftp.createReadStream(remotePath)
+    stream.on('data', (chunk: Buffer) => chunks.push(chunk))
+    stream.on('end',  () => resolve(Buffer.concat(chunks).toString('utf8')))
+    stream.on('error', reject)
+  })
+}
+
+export async function writeRemoteFile(connectionId: string, remotePath: string, content: string): Promise<void> {
+  const sftp = await getSftp(connectionId)
+  return new Promise((resolve, reject) => {
+    const stream = sftp.createWriteStream(remotePath)
+    stream.on('close', resolve)
+    stream.on('error', reject)
+    stream.end(Buffer.from(content, 'utf8'))
   })
 }

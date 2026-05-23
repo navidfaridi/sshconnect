@@ -1,127 +1,140 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import Sidebar from './components/Sidebar'
 import Terminal from './components/Terminal'
 import FileManager from './components/FileManager'
 import ServerModal from './components/ServerModal'
 import SplitPane from './components/SplitPane'
 import AuthButton from './components/AuthButton'
-import { Server, Tab, CloudUser } from './types'
+import MonitorBar from './components/MonitorBar'
+import MasterPasswordModal from './components/MasterPasswordModal'
+import FileEditor from './components/FileEditor'
+import KeyManager from './components/KeyManager'
+import { Server, Tab, CloudUser, MonitorMetrics, MasterPasswordStatus } from './types'
 import logoUrl from './assets/logo.png'
 
 export default function App() {
-  const [servers, setServers] = useState<Server[]>([])
-  const [tabs, setTabs] = useState<Tab[]>([])
+  const [servers, setServers]   = useState<Server[]>([])
+  const [tabs, setTabs]         = useState<Tab[]>([])
   const [activeTabId, setActiveTabId] = useState<string | null>(null)
-  const [showModal, setShowModal] = useState(false)
+  const [showModal, setShowModal]   = useState(false)
   const [editServer, setEditServer] = useState<Server | null>(null)
-  const [user, setUser] = useState<CloudUser | null>(null)
-  const [syncing, setSyncing] = useState(false)
-  const [syncMsg, setSyncMsg] = useState<string | null>(null)
+  const [user, setUser]           = useState<CloudUser | null>(null)
+  const [syncing, setSyncing]     = useState(false)
+  const [syncMsg, setSyncMsg]     = useState<string | null>(null)
+  // Feature 1
+  const [masterStatus, setMasterStatus] = useState<MasterPasswordStatus>('none')
+  const [showMasterModal, setShowMasterModal] = useState(false)
+  // Feature 2
+  const [showKeyManager, setShowKeyManager] = useState(false)
+  // Feature 4
+  const [editorFile, setEditorFile] = useState<{ connectionId: string; remotePath: string } | null>(null)
 
+  // ─── Init ──────────────────────────────────────────────────────────────────
   useEffect(() => {
     loadServers()
-    // بررسی وضعیت لاگین هنگام شروع
-    window.api.auth.currentUser().then((u) => setUser(u))
+    window.api.auth.currentUser().then(async (u) => {
+      setUser(u)
+      if (u) {
+        const status = await window.api.master.status()
+        setMasterStatus(status)
+        if (status !== 'none') setShowMasterModal(true)
+      }
+    })
+  }, [])
+
+  // Feature 5: subscribe to monitor events
+  useEffect(() => {
+    const unsub = window.api.monitor.onMetrics((connectionId, metrics) => {
+      setTabs((prev) => prev.map((t) =>
+        t.id === connectionId ? { ...t, metrics } : t
+      ))
+    })
+    return () => unsub()
   }, [])
 
   async function loadServers() {
     setServers(await window.api.server.list())
   }
 
-  // ─── Auth ────────────────────────────────────────────────────────
+  // ─── Auth ──────────────────────────────────────────────────────────────────
   async function handleSignIn() {
     try {
       const u = await window.api.auth.signIn()
       setUser(u)
-      // بعد از لاگین، سرورهای cloud را دریافت و merge کن
-      await handleSync(u)
-    } catch (e: any) {
-      alert('Sign in failed: ' + e.message)
-    }
+      const status = await window.api.master.status()
+      setMasterStatus(status)
+      if (status !== 'none') setShowMasterModal(true)
+      else await handleSync(u)
+    } catch (e: any) { alert('Sign in failed: ' + e.message) }
   }
 
   async function handleSignOut() {
-    // بستن همه تب‌های باز
     tabs.forEach((tab) => window.api.ssh.disconnect(tab.id))
-    setTabs([])
-    setActiveTabId(null)
-    // پاک کردن سرورها از local store و state
+    setTabs([]); setActiveTabId(null)
     await window.api.server.clearAll()
     setServers([])
-    // logout
     await window.api.auth.signOut()
-    setUser(null)
+    await window.api.master.lock()
+    setUser(null); setMasterStatus('none')
   }
 
+  async function handleMasterUnlocked() {
+    setShowMasterModal(false)
+    setMasterStatus('unlocked')
+    if (user) await handleSync(user)
+  }
+
+  // ─── Cloud Sync ────────────────────────────────────────────────────────────
   async function handleSync(currentUser?: CloudUser) {
     const u = currentUser ?? user
     if (!u) return
-    setSyncing(true)
-    setSyncMsg(null)
+    setSyncing(true); setSyncMsg(null)
     try {
-      // دریافت سرورها از cloud
       const cloudServers = await window.api.sync.download()
-      const cloudIds = new Set(cloudServers.map((s) => s.id))
-
-      // خواندن سرورهای محلی فعلی (fresh از store)
+      const cloudIds     = new Set(cloudServers.map((s) => s.id))
       const localServers = await window.api.server.list()
-      const localIds = new Set(localServers.map((s) => s.id))
-
-      // افزودن سرورهایی که در cloud هستن ولی محلی نیستن
-      for (const cs of cloudServers) {
-        if (!localIds.has(cs.id)) {
-          await window.api.server.add(cs) // ID حفظ می‌شه
-        }
-      }
-
-      // آپلود فقط سرورهایی که محلی هستن ولی در cloud نیستن
-      for (const ls of localServers) {
-        if (!cloudIds.has(ls.id)) {
-          await window.api.sync.uploadServer(ls.id).catch(() => {})
-        }
-      }
-
+      const localIds     = new Set(localServers.map((s) => s.id))
+      for (const cs of cloudServers)
+        if (!localIds.has(cs.id)) await window.api.server.add(cs)
+      for (const ls of localServers)
+        if (!cloudIds.has(ls.id)) await window.api.sync.uploadServer(ls.id).catch(() => {})
       await loadServers()
-      setSyncMsg('Synced ✓')
-      setTimeout(() => setSyncMsg(null), 2500)
+      setSyncMsg('Synced ✓'); setTimeout(() => setSyncMsg(null), 2500)
     } catch (e: any) {
-      setSyncMsg('Sync failed')
-      setTimeout(() => setSyncMsg(null), 3000)
-    } finally {
-      setSyncing(false)
-    }
+      setSyncMsg('Sync failed'); setTimeout(() => setSyncMsg(null), 3000)
+    } finally { setSyncing(false) }
   }
 
+  // ─── Connections ───────────────────────────────────────────────────────────
   async function handleConnect(server: Server) {
     const connectionId = `${server.id}-${Date.now()}`
     const tab: Tab = {
-      id: connectionId,
-      serverId: server.id,
-      serverName: server.name,
-      host: server.host,
-      status: 'connecting',
-      showTerminal: true,
-      showFiles: false,
-      splitPercent: 55,
-      currentPath: '/'
+      id: connectionId, serverId: server.id, serverName: server.name, host: server.host,
+      status: 'connecting', showTerminal: true, showFiles: false,
+      splitPercent: 55, splitOrientation: 'horizontal', currentPath: '/'
     }
     setTabs((prev) => [...prev, tab])
     setActiveTabId(connectionId)
-
     try {
       await window.api.ssh.connect(connectionId, server.id)
-      setTabs((prev) => prev.map((t) => t.id === connectionId ? { ...t, status: 'connected' } : t))
+      setTabs((prev) => prev.map((t) =>
+        t.id === connectionId ? { ...t, status: 'connected' } : t
+      ))
+      // Feature 5: start monitoring
+      window.api.monitor.start(connectionId).catch(() => {})
     } catch {
-      setTabs((prev) => prev.map((t) => t.id === connectionId ? { ...t, status: 'error' } : t))
+      setTabs((prev) => prev.map((t) =>
+        t.id === connectionId ? { ...t, status: 'error' } : t
+      ))
     }
   }
 
   function closeTab(tabId: string) {
     window.api.ssh.disconnect(tabId)
+    window.api.monitor.stop(tabId).catch(() => {})
     setTabs((prev) => {
       const next = prev.filter((t) => t.id !== tabId)
-      if (activeTabId === tabId)
-        setActiveTabId(next.length > 0 ? next[next.length - 1].id : null)
+      if (activeTabId === tabId) setActiveTabId(next.length > 0 ? next[next.length - 1].id : null)
       return next
     })
   }
@@ -136,11 +149,11 @@ export default function App() {
     const isTerminal = panel === 'terminal'
     const current = isTerminal ? tab.showTerminal : tab.showFiles
     const other   = isTerminal ? tab.showFiles   : tab.showTerminal
-    // at least one panel must stay open
     if (current && !other) return
     updateTab(tabId, isTerminal ? { showTerminal: !current } : { showFiles: !current })
   }
 
+  // ─── Server CRUD ───────────────────────────────────────────────────────────
   async function handleSaveServer(data: Omit<Server, 'id' | 'createdAt'>) {
     if (editServer) {
       await window.api.server.update(editServer.id, data)
@@ -149,8 +162,7 @@ export default function App() {
       const added = await window.api.server.add(data)
       if (user && added?.id) window.api.sync.uploadServer(added.id).catch(() => {})
     }
-    setShowModal(false)
-    setEditServer(null)
+    setShowModal(false); setEditServer(null)
     loadServers()
   }
 
@@ -169,22 +181,18 @@ export default function App() {
     return 'bg-gray-500'
   }
 
+  // ─── render ────────────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden">
 
-      {/* ── Draggable title bar ── */}
-      <div
-        className="flex items-center gap-2 px-3 bg-dark-800 border-b border-dark-600 flex-shrink-0"
-        style={{ height: 36, WebkitAppRegion: 'drag' } as React.CSSProperties}
-      >
-        <img
-          src={logoUrl}
-          alt="ConnectSSH"
+      {/* ── Title bar ── */}
+      <div className="flex items-center gap-2 px-3 bg-dark-800 border-b border-dark-600 flex-shrink-0"
+        style={{ height: 36, WebkitAppRegion: 'drag' } as React.CSSProperties}>
+        <img src={logoUrl} alt="SSH Connect"
           className="w-4 h-4 pointer-events-none select-none flex-shrink-0"
-          style={{ imageRendering: 'crisp-edges' }}
-        />
+          style={{ imageRendering: 'crisp-edges' }} />
         <span className="text-xs font-semibold text-gray-500 pointer-events-none select-none tracking-wide">
-          ConnectSSH
+          SSH Connect
         </span>
       </div>
 
@@ -199,19 +207,21 @@ export default function App() {
             onEdit={(s) => { setEditServer(s); setShowModal(true) }}
             onDelete={handleDeleteServer}
           />
-          {/* sync status */}
           {syncMsg && (
-            <div className="px-4 py-1 text-xs text-center text-green-400 bg-green-900/20">
-              {syncMsg}
-            </div>
+            <div className="px-4 py-1 text-xs text-center text-green-400 bg-green-900/20">{syncMsg}</div>
           )}
-          <AuthButton
-            user={user}
-            syncing={syncing}
-            onSignIn={handleSignIn}
-            onSignOut={handleSignOut}
-            onSync={() => handleSync()}
-          />
+          {/* SSH Key Manager button */}
+          <button onClick={() => setShowKeyManager(true)}
+            className="mx-3 mb-2 flex items-center gap-2 px-3 py-1.5 rounded text-gray-500 hover:text-gray-300 hover:bg-dark-700 text-xs transition-colors"
+            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+            </svg>
+            SSH Keys
+          </button>
+          <AuthButton user={user} syncing={syncing}
+            onSignIn={handleSignIn} onSignOut={handleSignOut} onSync={() => handleSync()} />
         </div>
 
         {/* ── Main area ── */}
@@ -221,55 +231,56 @@ export default function App() {
           {tabs.length > 0 && (
             <div className="flex items-center bg-dark-800 border-b border-dark-600 overflow-x-auto flex-shrink-0">
               {tabs.map((tab) => (
-                <div
-                  key={tab.id}
-                  onClick={() => setActiveTabId(tab.id)}
+                <div key={tab.id} onClick={() => setActiveTabId(tab.id)}
                   className={`flex items-center gap-2 px-3 py-2 border-r border-dark-600 cursor-pointer group flex-shrink-0 transition-colors ${
                     activeTabId === tab.id
                       ? 'bg-dark-900 text-white border-b-2 border-b-accent-500'
                       : 'text-gray-400 hover:text-white hover:bg-dark-700'
-                  }`}
-                >
+                  }`}>
                   <span className={`w-2 h-2 rounded-full flex-shrink-0 ${statusDot(tab.status)}`} />
                   <span className="text-sm max-w-[130px] truncate">{tab.serverName}</span>
 
-                  {/* Panel toggles — only on active tab */}
                   {activeTabId === tab.id && (
                     <div className="flex items-center gap-0.5 ml-1">
                       {/* Terminal toggle */}
-                      <button
-                        onClick={(e) => { e.stopPropagation(); togglePanel(tab.id, 'terminal') }}
+                      <button onClick={(e) => { e.stopPropagation(); togglePanel(tab.id, 'terminal') }}
                         title={tab.showTerminal ? 'Hide terminal' : 'Show terminal'}
-                        className={`p-1 rounded transition-colors ${
-                          tab.showTerminal ? 'text-accent-400 hover:bg-accent-600/20' : 'text-gray-600 hover:text-gray-400'
-                        }`}
-                      >
+                        className={`p-1 rounded transition-colors ${tab.showTerminal ? 'text-accent-400 hover:bg-accent-600/20' : 'text-gray-600 hover:text-gray-400'}`}>
                         <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                             d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                         </svg>
                       </button>
                       {/* Files toggle */}
-                      <button
-                        onClick={(e) => { e.stopPropagation(); togglePanel(tab.id, 'files') }}
+                      <button onClick={(e) => { e.stopPropagation(); togglePanel(tab.id, 'files') }}
                         title={tab.showFiles ? 'Hide file manager' : 'Show file manager'}
-                        className={`p-1 rounded transition-colors ${
-                          tab.showFiles ? 'text-accent-400 hover:bg-accent-600/20' : 'text-gray-600 hover:text-gray-400'
-                        }`}
-                      >
+                        className={`p-1 rounded transition-colors ${tab.showFiles ? 'text-accent-400 hover:bg-accent-600/20' : 'text-gray-600 hover:text-gray-400'}`}>
                         <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                             d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
                         </svg>
                       </button>
+                      {/* Feature 3: orientation toggle */}
+                      {tab.showTerminal && tab.showFiles && (
+                        <button onClick={(e) => {
+                          e.stopPropagation()
+                          updateTab(tab.id, {
+                            splitOrientation: tab.splitOrientation === 'horizontal' ? 'vertical' : 'horizontal'
+                          })
+                        }}
+                          title={`Switch to ${tab.splitOrientation === 'horizontal' ? 'vertical' : 'horizontal'} split`}
+                          className="p-1 rounded text-gray-600 hover:text-gray-400 transition-colors">
+                          {tab.splitOrientation === 'horizontal'
+                            ? <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18" /></svg>
+                            : <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
+                          }
+                        </button>
+                      )}
                     </div>
                   )}
 
-                  {/* Close tab */}
-                  <button
-                    onClick={(e) => { e.stopPropagation(); closeTab(tab.id) }}
-                    className="ml-1 p-0.5 rounded text-gray-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
-                  >
+                  <button onClick={(e) => { e.stopPropagation(); closeTab(tab.id) }}
+                    className="ml-1 p-0.5 rounded text-gray-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all">
                     <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
                     </svg>
@@ -280,25 +291,30 @@ export default function App() {
           )}
 
           {/* Content */}
-          <div className="flex-1 overflow-hidden relative flex">
+          <div className="flex-1 overflow-hidden relative flex flex-col">
             {tabs.map((tab) => (
-              <div
-                key={tab.id}
-                className={`w-full h-full ${tab.id === activeTabId ? 'flex' : 'hidden'}`}
-              >
-                <SplitPane
-                  showLeft={tab.showTerminal}
-                  showRight={tab.showFiles}
-                  splitPercent={tab.splitPercent}
-                  onSplitChange={(pct) => updateTab(tab.id, { splitPercent: pct })}
-                  left={<Terminal tab={tab} isActive={tab.id === activeTabId} />}
-                  right={
-                    <FileManager
-                      tab={tab}
-                      onPathChange={(path) => updateTab(tab.id, { currentPath: path })}
-                    />
-                  }
-                />
+              <div key={tab.id} className={`flex-1 flex flex-col overflow-hidden ${tab.id === activeTabId ? 'flex' : 'hidden'}`}>
+                {/* Feature 5: Monitor bar (only when connected and metrics available) */}
+                {tab.status === 'connected' && tab.metrics && (
+                  <MonitorBar metrics={tab.metrics} />
+                )}
+                <div className="flex-1 overflow-hidden flex">
+                  <SplitPane
+                    showLeft={tab.showTerminal}
+                    showRight={tab.showFiles}
+                    splitPercent={tab.splitPercent}
+                    splitOrientation={tab.splitOrientation}
+                    onSplitChange={(pct) => updateTab(tab.id, { splitPercent: pct })}
+                    left={<Terminal tab={tab} isActive={tab.id === activeTabId} />}
+                    right={
+                      <FileManager
+                        tab={tab}
+                        onPathChange={(path) => updateTab(tab.id, { currentPath: path })}
+                        onEditFile={(remotePath) => setEditorFile({ connectionId: tab.id, remotePath })}
+                      />
+                    }
+                  />
+                </div>
               </div>
             ))}
             {tabs.length === 0 && (
@@ -315,11 +331,26 @@ export default function App() {
         </div>
       </div>
 
+      {/* ── Modals ── */}
       {showModal && (
-        <ServerModal
-          server={editServer}
-          onSave={handleSaveServer}
-          onClose={() => { setShowModal(false); setEditServer(null) }}
+        <ServerModal server={editServer} onSave={handleSaveServer}
+          onClose={() => { setShowModal(false); setEditServer(null) }} />
+      )}
+
+      {/* Feature 1 */}
+      {showMasterModal && (
+        <MasterPasswordModal status={masterStatus} onUnlocked={handleMasterUnlocked} />
+      )}
+
+      {/* Feature 2 */}
+      {showKeyManager && <KeyManager onClose={() => setShowKeyManager(false)} />}
+
+      {/* Feature 4 */}
+      {editorFile && (
+        <FileEditor
+          connectionId={editorFile.connectionId}
+          remotePath={editorFile.remotePath}
+          onClose={() => setEditorFile(null)}
         />
       )}
     </div>

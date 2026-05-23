@@ -1,9 +1,23 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { FileEntry, Tab } from '../types'
 
+// File extensions that can be opened in the editor
+const EDITABLE_EXTS = new Set([
+  'txt','md','json','yaml','yml','toml','ini','conf','cfg','env',
+  'js','jsx','ts','tsx','py','go','rs','rb','java','php','cpp','c','h',
+  'sh','bash','zsh','fish','nginx','xml','html','css','scss','sql',
+  'dockerfile','gitignore','htaccess','log'
+])
+
+function isEditable(filename: string): boolean {
+  const ext = filename.split('.').pop()?.toLowerCase() ?? ''
+  return EDITABLE_EXTS.has(ext) || !filename.includes('.')
+}
+
 interface Props {
   tab: Tab
   onPathChange: (path: string) => void
+  onEditFile?: (remotePath: string) => void
 }
 
 function formatSize(bytes: number): string {
@@ -21,7 +35,7 @@ function formatDate(ts: number): string {
   })
 }
 
-export default function FileManager({ tab, onPathChange }: Props) {
+export default function FileManager({ tab, onPathChange, onEditFile }: Props) {
   const [entries, setEntries] = useState<FileEntry[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -29,6 +43,7 @@ export default function FileManager({ tab, onPathChange }: Props) {
   const [progress, setProgress] = useState<{ file: string; pct: number } | null>(null)
   const [newDirName, setNewDirName] = useState('')
   const [showNewDir, setShowNewDir] = useState(false)
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; entry: FileEntry } | null>(null)
 
   const load = useCallback(
     async (path: string) => {
@@ -74,6 +89,28 @@ export default function FileManager({ tab, onPathChange }: Props) {
       : tab.currentPath + '/' + entry.filename
     onPathChange(newPath)
   }
+
+  function handleDoubleClick(entry: FileEntry) {
+    if (entry.isDirectory) { navigate(entry); return }
+    if (isEditable(entry.filename) && onEditFile) {
+      const remotePath = (tab.currentPath === '/' ? '' : tab.currentPath) + '/' + entry.filename
+      onEditFile(remotePath)
+    }
+  }
+
+  function handleContextMenu(e: React.MouseEvent, entry: FileEntry) {
+    e.preventDefault()
+    e.stopPropagation()
+    setCtxMenu({ x: e.clientX, y: e.clientY, entry })
+  }
+
+  // Close context menu on outside click
+  useEffect(() => {
+    if (!ctxMenu) return
+    const close = () => setCtxMenu(null)
+    window.addEventListener('click', close)
+    return () => window.removeEventListener('click', close)
+  }, [ctxMenu])
 
   function goUp() {
     const parts = tab.currentPath.split('/').filter(Boolean)
@@ -268,7 +305,8 @@ export default function FileManager({ tab, onPathChange }: Props) {
                     next.has(entry.filename) ? next.delete(entry.filename) : next.add(entry.filename)
                     setSelected(next)
                   }}
-                  onDoubleClick={() => navigate(entry)}
+                  onDoubleClick={() => handleDoubleClick(entry)}
+                  onContextMenu={(e) => handleContextMenu(e, entry)}
                   className={`border-b border-dark-700/50 cursor-pointer transition-colors ${
                     selected.has(entry.filename)
                       ? 'bg-accent-600/20'
@@ -307,6 +345,76 @@ export default function FileManager({ tab, onPathChange }: Props) {
       <div className="px-4 py-1.5 border-t border-dark-600 bg-dark-800 text-xs text-gray-600">
         {entries.length} items{selected.size > 0 && ` · ${selected.size} selected`}
       </div>
+
+      {/* File context menu */}
+      {ctxMenu && (
+        <div
+          className="fixed z-50 min-w-[160px] bg-[#161b22] border border-[#30363d] rounded-md shadow-xl py-1 text-sm"
+          style={{ top: ctxMenu.y, left: ctxMenu.x }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Edit — only for editable files */}
+          {!ctxMenu.entry.isDirectory && isEditable(ctxMenu.entry.filename) && onEditFile && (
+            <button
+              className="w-full flex items-center gap-3 px-3 py-1.5 text-left text-[#e6edf3] hover:bg-[#21262d]"
+              onClick={() => {
+                const rp = (tab.currentPath === '/' ? '' : tab.currentPath) + '/' + ctxMenu.entry.filename
+                onEditFile(rp)
+                setCtxMenu(null)
+              }}
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
+                  d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+              </svg>
+              Edit
+            </button>
+          )}
+          {ctxMenu.entry.isDirectory && (
+            <button
+              className="w-full flex items-center gap-3 px-3 py-1.5 text-left text-[#e6edf3] hover:bg-[#21262d]"
+              onClick={() => { navigate(ctxMenu.entry); setCtxMenu(null) }}
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
+                  d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+              </svg>
+              Open
+            </button>
+          )}
+          {!ctxMenu.entry.isDirectory && (
+            <button
+              className="w-full flex items-center gap-3 px-3 py-1.5 text-left text-[#e6edf3] hover:bg-[#21262d]"
+              onClick={() => {
+                const rp = (tab.currentPath === '/' ? '' : tab.currentPath) + '/' + ctxMenu.entry.filename
+                window.api.sftp.download(tab.id, rp)
+                setCtxMenu(null)
+              }}
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
+                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              Download
+            </button>
+          )}
+          <div className="border-t border-[#30363d] my-1" />
+          <button
+            className="w-full flex items-center gap-3 px-3 py-1.5 text-left text-red-400 hover:bg-red-900/20"
+            onClick={() => {
+              const rp = (tab.currentPath === '/' ? '' : tab.currentPath) + '/' + ctxMenu.entry.filename
+              window.api.sftp.delete(tab.id, rp, ctxMenu.entry.isDirectory).then(() => load(tab.currentPath))
+              setCtxMenu(null)
+            }}
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
+                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+            Delete
+          </button>
+        </div>
+      )}
     </div>
   )
 }

@@ -1,72 +1,89 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
 contextBridge.exposeInMainWorld('api', {
-  // ─── Auth ─────────────────────────────────────────────────────
+  // ─── Auth ─────────────────────────────────────────────────────────────────
   auth: {
     currentUser: () => ipcRenderer.invoke('auth:current-user'),
-    signIn: () => ipcRenderer.invoke('auth:sign-in'),
-    signOut: () => ipcRenderer.invoke('auth:sign-out')
+    signIn:      () => ipcRenderer.invoke('auth:sign-in'),
+    signOut:     () => ipcRenderer.invoke('auth:sign-out')
   },
 
-  // ─── Sync ─────────────────────────────────────────────────────
+  // ─── Sync ─────────────────────────────────────────────────────────────────
   sync: {
-    download: () => ipcRenderer.invoke('sync:download'),
-    uploadAll: () => ipcRenderer.invoke('sync:upload-all'),
-    uploadServer: (id: string) => ipcRenderer.invoke('sync:upload-server', id),
-    deleteServer: (id: string) => ipcRenderer.invoke('sync:delete-server', id)
+    download:     ()          => ipcRenderer.invoke('sync:download'),
+    uploadAll:    ()          => ipcRenderer.invoke('sync:upload-all'),
+    uploadServer: (id)        => ipcRenderer.invoke('sync:upload-server', id),
+    deleteServer: (id)        => ipcRenderer.invoke('sync:delete-server', id)
   },
 
-  // ─── Servers ─────────────────────────────────────────────────
+  // ─── Servers ──────────────────────────────────────────────────────────────
   server: {
-    list: () => ipcRenderer.invoke('server:list'),
-    add: (server: object) => ipcRenderer.invoke('server:add', server),
-    update: (id: string, updates: object) => ipcRenderer.invoke('server:update', id, updates),
-    delete: (id: string) => ipcRenderer.invoke('server:delete', id),
-    clearAll: () => ipcRenderer.invoke('server:clear-all')
+    list:     ()                 => ipcRenderer.invoke('server:list'),
+    add:      (server)           => ipcRenderer.invoke('server:add', server),
+    update:   (id, updates)      => ipcRenderer.invoke('server:update', id, updates),
+    delete:   (id)               => ipcRenderer.invoke('server:delete', id),
+    clearAll: ()                 => ipcRenderer.invoke('server:clear-all')
   },
 
-  // ─── SSH ──────────────────────────────────────────────────────
+  // ─── SSH ──────────────────────────────────────────────────────────────────
   ssh: {
-    connect: (connectionId: string, serverId: string) =>
-      ipcRenderer.invoke('ssh:connect', connectionId, serverId),
-    send: (connectionId: string, data: string) => ipcRenderer.invoke('ssh:send', connectionId, data),
-    resize: (connectionId: string, cols: number, rows: number) =>
-      ipcRenderer.invoke('ssh:resize', connectionId, cols, rows),
-    disconnect: (connectionId: string) => ipcRenderer.invoke('ssh:disconnect', connectionId),
-    onData: (callback: (connectionId: string, data: string) => void) => {
-      const listener = (_event: any, id: string, data: string) => callback(id, data)
+    connect:    (connectionId, serverId) => ipcRenderer.invoke('ssh:connect', connectionId, serverId),
+    send:       (connectionId, data)     => ipcRenderer.invoke('ssh:send', connectionId, data),
+    resize:     (connectionId, c, r)     => ipcRenderer.invoke('ssh:resize', connectionId, c, r),
+    disconnect: (connectionId)           => ipcRenderer.invoke('ssh:disconnect', connectionId),
+    onData: (callback) => {
+      const listener = (_: any, id: string, data: string) => callback(id, data)
       ipcRenderer.on('ssh:data', listener)
-      return () => {
-        ipcRenderer.removeListener('ssh:data', listener)
-      }
+      return () => ipcRenderer.removeListener('ssh:data', listener)
     },
-    onClosed: (callback: (connectionId: string) => void) => {
-      const listener = (_event: any, id: string) => callback(id)
+    onClosed: (callback) => {
+      const listener = (_: any, id: string) => callback(id)
       ipcRenderer.on('ssh:closed', listener)
-      return () => {
-        ipcRenderer.removeListener('ssh:closed', listener)
-      }
+      return () => ipcRenderer.removeListener('ssh:closed', listener)
     }
   },
 
-  // ─── SFTP ─────────────────────────────────────────────────────
+  // ─── SFTP ─────────────────────────────────────────────────────────────────
   sftp: {
-    list: (connectionId: string, remotePath: string) =>
-      ipcRenderer.invoke('sftp:list', connectionId, remotePath),
-    upload: (connectionId: string, remotePath: string) =>
-      ipcRenderer.invoke('sftp:upload', connectionId, remotePath),
-    download: (connectionId: string, remotePath: string) =>
-      ipcRenderer.invoke('sftp:download', connectionId, remotePath),
-    delete: (connectionId: string, remotePath: string, isDir: boolean) =>
-      ipcRenderer.invoke('sftp:delete', connectionId, remotePath, isDir),
-    mkdir: (connectionId: string, remotePath: string) =>
-      ipcRenderer.invoke('sftp:mkdir', connectionId, remotePath),
-    onProgress: (callback: (connectionId: string, file: string, progress: number) => void) => {
-      const listener = (_event: any, id: string, file: string, progress: number) => callback(id, file, progress)
+    list:      (id, rp)          => ipcRenderer.invoke('sftp:list', id, rp),
+    upload:    (id, rp)          => ipcRenderer.invoke('sftp:upload', id, rp),
+    download:  (id, rp)          => ipcRenderer.invoke('sftp:download', id, rp),
+    delete:    (id, rp, isDir)   => ipcRenderer.invoke('sftp:delete', id, rp, isDir),
+    mkdir:     (id, rp)          => ipcRenderer.invoke('sftp:mkdir', id, rp),
+    readFile:  (id, rp)          => ipcRenderer.invoke('sftp:read-file', id, rp),
+    writeFile: (id, rp, content) => ipcRenderer.invoke('sftp:write-file', id, rp, content),
+    onProgress: (callback) => {
+      const listener = (_: any, id: string, file: string, pct: number) => callback(id, file, pct)
       ipcRenderer.on('sftp:progress', listener)
-      return () => {
-        ipcRenderer.removeListener('sftp:progress', listener)
-      }
+      return () => ipcRenderer.removeListener('sftp:progress', listener)
     }
+  },
+
+  // ─── Feature 5: Monitor ───────────────────────────────────────────────────
+  monitor: {
+    start: (id) => ipcRenderer.invoke('monitor:start', id),
+    stop:  (id) => ipcRenderer.invoke('monitor:stop', id),
+    onMetrics: (callback) => {
+      const listener = (_: any, id: string, metrics: any) => callback(id, metrics)
+      ipcRenderer.on('ssh:monitor', listener)
+      return () => ipcRenderer.removeListener('ssh:monitor', listener)
+    }
+  },
+
+  // ─── Feature 2: SSH Keys ──────────────────────────────────────────────────
+  keys: {
+    list:     ()                    => ipcRenderer.invoke('keys:list'),
+    generate: (name, type)          => ipcRenderer.invoke('keys:generate', name, type),
+    import:   (name, pem)           => ipcRenderer.invoke('keys:import', name, pem),
+    delete:   (id)                  => ipcRenderer.invoke('keys:delete', id)
+  },
+
+  // ─── Feature 1: Master Password ───────────────────────────────────────────
+  master: {
+    status:    () => ipcRenderer.invoke('master:status'),
+    setup:     (password) => ipcRenderer.invoke('master:setup', password),
+    unlock:    (password) => ipcRenderer.invoke('master:unlock', password),
+    lock:      ()         => ipcRenderer.invoke('master:lock'),
+    isEnabled: ()         => ipcRenderer.invoke('master:is-enabled')
   }
 })

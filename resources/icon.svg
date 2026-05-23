@@ -1,51 +1,44 @@
 <svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
-
   <defs>
-    <!-- گلوی آبی برای C و cursor -->
-    <filter id="glow" x="-25%" y="-25%" width="150%" height="150%">
-      <feGaussianBlur stdDeviation="7" result="blur"/>
-      <feMerge>
-        <feMergeNode in="blur"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
-    </filter>
-    <!-- گلوی خفیف پس‌زمینه -->
-    <radialGradient id="bgGlow" cx="44%" cy="40%" r="52%">
-      <stop offset="0%"   stop-color="#388bfd" stop-opacity="0.18"/>
-      <stop offset="100%" stop-color="#388bfd" stop-opacity="0"/>
-    </radialGradient>
+    <!-- پس‌زمینه: گرادیان از گوشه بالا-چپ به پایین-راست -->
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0%"   stop-color="#1c2333"/>
+      <stop offset="100%" stop-color="#0d1117"/>
+    </linearGradient>
   </defs>
 
-  <!-- پس‌زمینه: مربع گرد تیره -->
-  <rect width="512" height="512" rx="110" fill="#0d1117"/>
-  <!-- لایه گلوی خفیف روی پس‌زمینه -->
-  <rect width="512" height="512" rx="110" fill="url(#bgGlow)"/>
+  <!-- پس‌زمینه اصلی -->
+  <rect width="512" height="512" rx="110" fill="url(#bgGrad)"/>
+
+  <!-- لبه داخلی خیلی ظریف برای حس عمق (فقط در سایزهای بزرگ دیده می‌شه) -->
+  <rect x="2" y="2" width="508" height="508" rx="108"
+        fill="none" stroke="white" stroke-opacity="0.07" stroke-width="3"/>
 
   <!--
-    کمان C
-    مرکز: (256, 256) | شعاع: 162 | gap: ±32° از سمت راست
-    top  = (256 + 162×cos32°, 256 − 162×sin32°) ≈ (393, 171)
-    bot  = (256 + 162×cos32°, 256 + 162×sin32°) ≈ (393, 341)
-    sweep=0 → ضد ساعتگرد در فضای صفحه → کمان C بزرگ سمت چپ
+    علامت >_ (پرامپت ترمینال)
+
+    شِوِرون >:
+      مرکز عمودی: y=248 (کمی بالاتر از مرکز برای تعادل بصری با _)
+      نقاط: (108, 178) → apex (218, 248) → (108, 318)
+      ضخامت: 52px با سر گرد
+
+    خط زیر _:
+      کنار راست > تا انتهای محدوده محتوا
+      موقعیت: x=248 تا x=408, y مرکز در 318 (هم‌راستا با پایین >)
+      ارتفاع: 46px با گوشه گرد
   -->
+
+  <!-- > شوِرون — سفید روشن، وزن بصری قوی -->
   <path
-    d="M 393,171 A 162,162 0 1,0 393,341"
-    stroke="#388bfd"
-    stroke-width="58"
+    d="M 108,178 L 218,248 L 108,318"
+    stroke="#dde4ef"
+    stroke-width="52"
     stroke-linecap="round"
-    filter="url(#glow)"
+    stroke-linejoin="round"
+    fill="none"
   />
 
-  <!--
-    cursor ترمینال: یه خط ضخیم (underscore) داخل C
-    کمی راست از مرکز، روی خط پایه حروف
-  -->
-  <rect
-    x="290" y="284"
-    width="86" height="20"
-    rx="10"
-    fill="#58a6ff"
-    filter="url(#glow)"
-  />
+  <!-- _ کرسر ترمینال — آبی آکسنت -->
+  <rect x="248" y="295" width="160" height="46" rx="23" fill="#4493f8"/>
 
 </svg>

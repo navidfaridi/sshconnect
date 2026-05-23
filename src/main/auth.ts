@@ -157,7 +157,7 @@ function startCallbackServer(): Promise<{
               </head><body><div style="text-align:center;padding:2rem">
               ${errMsg
                 ? `<div style="font-size:2.5rem;margin-bottom:1rem">❌</div><h2>Login cancelled</h2><p style="color:#8b949e;margin-top:.5rem">You can close this tab.</p>`
-                : `<div style="font-size:2.5rem;margin-bottom:1rem">✅</div><h2 style="margin-bottom:.5rem">Login successful!</h2><p style="color:#8b949e">You can close this tab and return to ConnectSSH.</p>`
+                : `<div style="font-size:2.5rem;margin-bottom:1rem">✅</div><h2 style="margin-bottom:.5rem">Login successful!</h2><p style="color:#8b949e">You can close this tab and return to SSH Connect.</p>`
               }
               </div></body></html>`)
             server.close()

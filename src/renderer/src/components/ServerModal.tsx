@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Server } from '../types'
+import { Server, SshKey } from '../types'
 
 interface Props {
   server?: Server | null
@@ -8,14 +8,24 @@ interface Props {
 }
 
 export default function ServerModal({ server, onSave, onClose }: Props) {
-  const [form, setForm] = useState({ name: '', host: '', port: '22', username: '', password: '' })
+  const [form, setForm]           = useState({ name: '', host: '', port: '22', username: '', password: '' })
   const [showPassword, setShowPassword] = useState(false)
+  const [authMode, setAuthMode]   = useState<'password' | 'key'>('password')
+  const [keys, setKeys]           = useState<SshKey[]>([])
+  const [selectedKeyId, setSelectedKeyId] = useState<string>('')
+
+  useEffect(() => {
+    window.api.keys.list().then(setKeys)
+  }, [])
 
   useEffect(() => {
     if (server) {
       setForm({ name: server.name, host: server.host, port: String(server.port), username: server.username, password: '' })
+      if (server.sshKeyId) { setAuthMode('key'); setSelectedKeyId(server.sshKeyId) }
+      else                 { setAuthMode('password'); setSelectedKeyId('') }
     } else {
       setForm({ name: '', host: '', port: '22', username: '', password: '' })
+      setAuthMode('password'); setSelectedKeyId('')
     }
     setShowPassword(false)
   }, [server])
@@ -23,11 +33,12 @@ export default function ServerModal({ server, onSave, onClose }: Props) {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     onSave({
-      name: form.name.trim() || form.host,
-      host: form.host.trim(),
-      port: parseInt(form.port) || 22,
+      name:     form.name.trim() || form.host,
+      host:     form.host.trim(),
+      port:     parseInt(form.port) || 22,
       username: form.username.trim(),
-      password: form.password || undefined
+      password: authMode === 'password' ? (form.password || undefined) : undefined,
+      sshKeyId: authMode === 'key'      ? (selectedKeyId || undefined) : undefined
     })
   }
 
@@ -43,9 +54,7 @@ export default function ServerModal({ server, onSave, onClose }: Props) {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14M12 5l7 7-7 7" />
               </svg>
             </div>
-            <h2 className="text-white font-semibold text-base">
-              {server ? 'Edit Server' : 'New Server'}
-            </h2>
+            <h2 className="text-white font-semibold text-base">{server ? 'Edit Server' : 'New Server'}</h2>
           </div>
           <button onClick={onClose} className="text-gray-500 hover:text-white transition-colors p-1 rounded hover:bg-dark-600">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -56,82 +65,79 @@ export default function ServerModal({ server, onSave, onClose }: Props) {
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
 
-          {/* Label */}
           <Field label="Label">
-            <input
-              type="text"
-              placeholder="My Server"
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-              className={input}
-            />
+            <input type="text" placeholder="My Server" value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })} className={input} />
           </Field>
 
-          {/* Host + Port */}
           <div className="flex gap-3">
             <Field label="Hostname / IP" className="flex-1">
-              <input
-                type="text"
-                placeholder="192.168.1.1"
-                value={form.host}
-                onChange={(e) => setForm({ ...form, host: e.target.value })}
-                required
-                className={input}
-              />
+              <input type="text" placeholder="192.168.1.1" value={form.host} required
+                onChange={(e) => setForm({ ...form, host: e.target.value })} className={input} />
             </Field>
             <Field label="Port" className="w-24">
-              <input
-                type="number"
-                value={form.port}
-                onChange={(e) => setForm({ ...form, port: e.target.value })}
-                className={input}
-              />
+              <input type="number" value={form.port}
+                onChange={(e) => setForm({ ...form, port: e.target.value })} className={input} />
             </Field>
           </div>
 
-          {/* Username */}
           <Field label="Username">
-            <input
-              type="text"
-              placeholder="root"
-              value={form.username}
-              onChange={(e) => setForm({ ...form, username: e.target.value })}
-              required
-              className={input}
-            />
+            <input type="text" placeholder="root" value={form.username} required
+              onChange={(e) => setForm({ ...form, username: e.target.value })} className={input} />
           </Field>
 
-          {/* Password */}
-          <Field label="Password">
-            <div className="relative">
-              <input
-                type={showPassword ? 'text' : 'password'}
-                placeholder={server ? 'Leave blank to keep current' : 'Password'}
-                value={form.password}
-                onChange={(e) => setForm({ ...form, password: e.target.value })}
-                className={input + ' pr-10'}
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 transition-colors"
-                tabIndex={-1}
-              >
-                {showPassword ? (
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
-                  </svg>
-                ) : (
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                  </svg>
-                )}
-              </button>
+          {/* Auth method toggle */}
+          <div>
+            <label className="block text-xs text-gray-400 mb-2 font-medium">Authentication</label>
+            <div className="flex gap-1 bg-dark-900 rounded-lg p-1">
+              {(['password', 'key'] as const).map((mode) => (
+                <button key={mode} type="button" onClick={() => setAuthMode(mode)}
+                  className={`flex-1 py-1.5 text-sm rounded-md font-medium transition-colors ${
+                    authMode === mode
+                      ? 'bg-dark-600 text-white shadow'
+                      : 'text-gray-500 hover:text-gray-300'
+                  }`}>
+                  {mode === 'password' ? '🔑 Password' : '🗝 SSH Key'}
+                </button>
+              ))}
             </div>
-          </Field>
+          </div>
 
-          {/* Info row in edit mode */}
+          {authMode === 'password' ? (
+            <Field label="Password">
+              <div className="relative">
+                <input type={showPassword ? 'text' : 'password'}
+                  placeholder={server ? 'Leave blank to keep current' : 'Password'}
+                  value={form.password}
+                  onChange={(e) => setForm({ ...form, password: e.target.value })}
+                  className={input + ' pr-10'} />
+                <button type="button" onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 transition-colors" tabIndex={-1}>
+                  {showPassword
+                    ? <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>
+                    : <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                  }
+                </button>
+              </div>
+            </Field>
+          ) : (
+            <Field label="SSH Key">
+              {keys.length === 0 ? (
+                <div className="bg-dark-700 border border-dark-600 rounded-lg px-3 py-2.5 text-sm text-gray-500">
+                  No SSH keys yet — add them in Key Manager
+                </div>
+              ) : (
+                <select value={selectedKeyId} onChange={(e) => setSelectedKeyId(e.target.value)}
+                  className={input}>
+                  <option value="">Select a key…</option>
+                  {keys.map((k) => (
+                    <option key={k.id} value={k.id}>{k.name} ({k.type})</option>
+                  ))}
+                </select>
+              )}
+            </Field>
+          )}
+
           {server && (
             <div className="rounded-lg bg-dark-700 border border-dark-600 px-4 py-3 text-xs text-gray-500 space-y-1">
               <div className="flex justify-between">
@@ -145,19 +151,13 @@ export default function ServerModal({ server, onSave, onClose }: Props) {
             </div>
           )}
 
-          {/* Actions */}
           <div className="flex gap-3 pt-1">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 py-2 rounded-lg border border-dark-600 text-gray-400 hover:text-white hover:border-dark-500 transition-colors text-sm"
-            >
+            <button type="button" onClick={onClose}
+              className="flex-1 py-2 rounded-lg border border-dark-600 text-gray-400 hover:text-white hover:border-dark-500 transition-colors text-sm">
               Cancel
             </button>
-            <button
-              type="submit"
-              className="flex-1 py-2 rounded-lg bg-accent-600 hover:bg-accent-500 text-white font-medium transition-colors text-sm"
-            >
+            <button type="submit"
+              className="flex-1 py-2 rounded-lg bg-accent-600 hover:bg-accent-500 text-white font-medium transition-colors text-sm">
               {server ? 'Save Changes' : 'Add Server'}
             </button>
           </div>
